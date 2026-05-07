@@ -1,0 +1,81 @@
+name: Publish GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate static site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f CNAME
+          grep -qx "simplixio.pierrehenry.dev" CNAME
+
+      - name: Check for placeholder form endpoint
+        run: |
+          if grep -q 'action="https://example.com"' index.html; then
+            echo "Replace the placeholder form action before publishing."
+            exit 1
+          fi
+
+      - name: Validate HTML
+        uses: Cyb3r-Jak3/html5validator-action@v7.2.0
+        with:
+          root: .
+          css: true
+          format: text
+
+      - name: Check internal links and assets
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: >
+            --no-progress
+            --include-fragments
+            --accept 200,204,206,301,302,429
+            './**/*.html'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: validate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
